@@ -1,63 +1,62 @@
-from langchain_ollama import ChatOllama
-from langchain.agents import AgentExecutor, create_tool_calling_agent
-from langchain_core.prompts import ChatPromptTemplate
-from tools import (
-    load_csv, 
-    get_dataset_info, 
-    remove_duplicates, 
-    handle_missing_values, 
-    convert_to_datetime, 
-    plot_histogram, 
-    plot_correlation
-)
+from langchain_community.llms import Ollama
+from langchain_experimental.agents import create_pandas_dataframe_agent
 
-def get_agent():
+def custom_error_handler(error: Exception) -> str:
     """
-    Crea y configura el agente usando Ollama local (Llama 3.1) con capacidades de ETL.
+    Rescata la respuesta si el modelo se lía con el formato.
     """
-    # 1. El Modelo (Cerebro)
-    # Usamos llama3.1 por su capacidad superior con herramientas
-    llm = ChatOllama(
-        model="llama3.2:3b",
+    error_text = str(error)
+    if "Final Answer:" in error_text:
+        return error_text.split("Final Answer:")[-1].strip()
+    return f"Error de formato: {error_text}. IMPORTANTE: Si ya tienes la info, usa 'Final Answer'."
+
+def get_agent(df):
+    """
+    Agente con Prompt 'One-Shot' (Ejemplo incluido) para romper bucles.
+    """
+    
+    llm = Ollama(
+        model="llama3.1", 
         temperature=0,
         base_url="http://localhost:11434"
     )
 
-    # 2. Las Herramientas (Manos)
-    tools = [
-        load_csv, 
-        get_dataset_info, 
-        remove_duplicates, 
-        handle_missing_values, 
-        convert_to_datetime, 
-        plot_histogram, 
-        plot_correlation
-    ]
+    # --- INGENIERÍA DE PROMPT AVANZADA ---
+    # Incluimos un ejemplo (One-Shot) para que el modelo sepa CUÁNDO parar.
+    prompt_prefix = """
+    Eres un Experto Data Scientist. Analiza el dataframe `df`.
 
-    # 3. El Prompt (Personalidad)
-    system_prompt = """Eres un Experto en Data Science e Ingeniería de Datos.
-    
-    TUS CAPACIDADES:
-    1. Cargar y Entender datos (Auditoría).
-    2. Limpiar datos (ETL): Eliminar duplicados, imputar nulos, convertir fechas.
-    3. Visualizar datos: Histogramas y correlaciones.
+    TU MISIÓN:
+    1. Generar código Python para resolver la duda.
+    2. Ejecutarlo y VER el resultado.
+    3. Usar ese resultado para responder al usuario FINALMENTE.
 
-    REGLAS DE COMPORTAMIENTO:
-    - Si el usuario pide limpiar o arreglar el dataset, USA las herramientas de modificación.
-    - Si el usuario pregunta por la calidad de los datos, usa get_dataset_info.
-    - NO expliques la herramienta, ¡EJECÚTALA!
-    - Sé eficiente y directo.
+    EJEMPLO DE COMPORTAMIENTO ESPERADO (IMITA ESTO):
+    --------------------------------------------------
+    User: ¿Qué columnas tiene el df?
+    Thought: Necesito ver los nombres de las columnas.
+    Action: python_repl_ast
+    Action Input: print(df.columns.tolist())
+    Observation: ['id', 'nombre', 'edad']
+    Thought: Ya veo las columnas en la observación. Voy a responder.
+    Final Answer: Las columnas del dataframe son: id, nombre y edad.
+    --------------------------------------------------
+
+    REGLAS DE ORO:
+    - SI YA VISTE EL DATO EN 'OBSERVATION', ¡NO VUELVAS A EJECUTAR CÓDIGO!
+    - Ve directo a 'Final Answer'.
+    - Usa `print(df.head().to_markdown())` para tablas.
+    - Usa `plt.savefig('plots/temp_plot.png')` para gráficos.
     """
 
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", system_prompt),
-        ("human", "{input}"),
-        ("placeholder", "{agent_scratchpad}"),
-    ])
+    agent = create_pandas_dataframe_agent(
+        llm=llm,
+        df=df,
+        verbose=True,
+        allow_dangerous_code=True,
+        prefix=prompt_prefix,
+        handle_parsing_errors=custom_error_handler,
+        max_iterations=10
+    )
 
-    # 4. Ensamblaje
-    # create_tool_calling_agent requiere langchain>=0.1.0, verificado en requirements.txt
-    agent = create_tool_calling_agent(llm, tools, prompt)
-
-    # Executor
-    return AgentExecutor(agent=agent, tools=tools, verbose=True)
+    return agent

@@ -100,7 +100,10 @@ Hemos implementado un Prompt Defensivo que incluye:
 * Markdown forzado: Para que las tablas se vean perfectas en Streamlit.
 
 ## 📸 Capturas
+### Interfaz Streamlit : 
 <img width="1435" height="808" alt="image" src="https://github.com/user-attachments/assets/d274ab35-9aa5-49ee-811c-f9aab75853ee" />
+
+### Proceso interno de Langchain con Ollama: 
 <img width="1369" height="693" alt="image" src="https://github.com/user-attachments/assets/771b0b15-d666-4e12-adb7-d74213c4f883" />
 <img width="954" height="346" alt="image" src="https://github.com/user-attachments/assets/e3cf9186-c14c-4088-a8fa-61823f0cd9fc" />
 
